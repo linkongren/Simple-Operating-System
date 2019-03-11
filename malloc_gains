@@ -1,0 +1,129 @@
+typedef struct Meta_mem {
+    size_t size, used;
+    void * begin;
+    struct Meta_mem *next, *pre;
+}meta, *pmeta;
+
+static pmeta head = NULL;
+
+static void Data_copy_to(void *dest, void *src, size_t len){
+    int i;
+    char *p1 = (char *)dest;
+    char *p2 = (char *)src;
+    for(i = 0; i < len; i++){
+        p1[i] = p2[i];
+    }
+    return;
+}
+
+void Init_node(pmeta p, size_t size, size_t used, pmeta pre, pmeta next){
+    p->size = size;
+    p->used = used;
+    p->next = next;
+    p->pre = pre;
+    p->begin = ((char *)p) + sizeof(meta);
+}
+
+void *mylloc(size_t sizes){
+    pmeta p, q;
+    size_t msize = sizes + sizeof(meta);
+    if(head == NULL) {
+        head = sbrk(0);
+        if(sbrk(msize) == (void *)-1){
+            return NULL;
+        }
+        Init_node(head, sizes, 1, NULL, NULL);
+        return head->begin;
+    }
+    
+    p = head;
+    while(p) {
+        if(p->size >= msize && p->used == 0) {
+            q = (pmeta)(((char *)p->begin) + sizes);
+            Init_node(q, p->size - msize, 0, p, p->next);
+            p->used = 1;
+            if(p->next != NULL) {
+                p->next->pre = q;
+            }
+            p->next = q;
+            p->size = sizes;
+            break;
+        }else if(p->size >= sizes && p->used == 0){
+            p->used = 1;
+            break;
+        }else if(p->next == NULL) {
+            break;
+        }
+        p = p->next;
+    }
+    if(p->next == NULL){
+        q = sbrk(0);
+        if(sbrk(msize) == (void *)-1) {
+            return NULL;
+        }
+        Init_node(q, sizes, 1, p, NULL);
+        p->next = q;
+        p = q;
+    }
+    
+    return p->begin;
+}
+
+void myfree(void *p){
+    pmeta q = (pmeta)(((char *)p) - sizeof(meta));
+    q->used = 0;
+    if(q->pre && q->pre->used == 0) {
+        pmeta k = q->pre;
+        k->size = k->size + q->size + sizeof(meta);
+        k->next = q->next;
+        if(q->next != NULL) {
+            q->next->pre = k;
+        }
+        q = k;
+    }
+    if(q->next && q->next->used == 0) {
+        pmeta k = q->next;
+        q->size = q->size + k->size + sizeof(meta);
+        q->next = k->next;
+        if(k->next != NULL){
+            k->next->pre = q;
+        }
+    }
+    if(q->next == NULL){
+        if(q->pre != NULL) {
+            q->pre->next = NULL;
+        }else{
+            head = NULL;
+        }
+        sbrk(-(q->size + sizeof(meta)));
+    }
+}
+
+void *mycalloc(size_t numitems, size_t size){
+    char *p = (char *)mylloc(numitems * size);
+    void *res = (void *)p;
+    int t = numitems * size;
+    while(t--){
+        (*p) = 0;
+        p++;
+    }
+    return res;
+}
+void *myrealloc(void *ptr, size_t size){
+    pmeta p = (pmeta)(((char *)ptr) - sizeof(meta));
+    if(p->size >= size) return p->begin;
+    else if(p->next == NULL) {
+        if(sbrk(size - p->size) == (void *)-1) {
+            return NULL;
+        }
+        p->size = size;
+    }
+    else{
+        void *ret = mylloc(size);
+        if(ret == NULL) return NULL;
+        Data_copy_to(ret, p->begin, p->size);
+        myfree(p->begin);
+        return ret;
+    }
+    return p->begin;
+}
