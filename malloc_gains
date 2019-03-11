@@ -1,3 +1,16 @@
+/*
+预备知识：
+使用链表法实现内存的管理，即使用某种结构保存内存块的信息，每个区块彼此相连类似链表。
+每次给用户进程分配新的内存时，都在内存前存放固定大小的信息。
+
+sbrk()函数：
+程序运行时数据区的大小是固定的，sbrk()函数可以实现动态分配内存空间
+sbrk(0) 返回此时堆空间的地址
+sbrk(n) n > 0 向系统申请n大小的空间，返回申请前的地址，申请失败返回（void*）-1
+sbrk(n) n < 0 回收申请空间的后n大小的空间，返回回收前的地址
+
+*/
+
 typedef struct Meta_mem {
     size_t size, used;
     void * begin;
@@ -23,6 +36,15 @@ void Init_node(pmeta p, size_t size, size_t used, pmeta pre, pmeta next){
     p->pre = pre;
     p->begin = ((char *)p) + sizeof(meta);
 }
+
+
+/*
+向系统申请一块大小为sizes的空间
+1.如果是第一次申请直接调用sbrk()函数
+2.从头开始遍历，寻找空间足够且未使用的内存块
+  2.1是否需要建立新的结点（减少内部碎片）
+3.向系统申请空间
+*/
 
 void *mylloc(size_t sizes){
     pmeta p, q;
@@ -69,6 +91,11 @@ void *mylloc(size_t sizes){
     return p->begin;
 }
 
+/*
+free时除了要把uesd声明为未使用外，还要尽可能的合并空闲的内存块（向前和向后）
+并且，如果free掉的内存块是我们申请的内存中最靠后的一块，那么这一块就因该及时让被系统回收
+*/
+
 void myfree(void *p){
     pmeta q = (pmeta)(((char *)p) - sizeof(meta));
     q->used = 0;
@@ -109,6 +136,11 @@ void *mycalloc(size_t numitems, size_t size){
     }
     return res;
 }
+
+/*
+尽可能不改地址
+尽可能不向系统申请空间（这里还没有做到最好，待完善）
+*/
 void *myrealloc(void *ptr, size_t size){
     pmeta p = (pmeta)(((char *)ptr) - sizeof(meta));
     if(p->size >= size) return p->begin;
